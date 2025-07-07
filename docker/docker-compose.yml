@@ -1,0 +1,156 @@
+services:
+  # Database MariaDB per la leaderboard
+  mariadb:
+    image: mariadb:10.11
+    container_name: game_database
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-secure_root_password}
+      MYSQL_DATABASE: ${DB_NAME:-gamedb}
+      MYSQL_USER: ${DB_USER:-gameuser}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secure_game_password}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - game_network
+    ports:
+      # Porta esposta solo internamente alla rete Docker
+      - "3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "$DB_USER", "-p$DB_PASSWORD"]
+      timeout: 20s
+      retries: 10
+      interval: 10s
+      start_period: 30s
+
+  # API Server Pubblico (accesso esterno)
+  public_api_server:
+    build:
+      context: ./api_public
+      dockerfile: Dockerfile
+    container_name: game_api_server_public
+    restart: unless-stopped
+    environment:
+      # Configurazione database
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-gamedb}
+      DB_USER: ${DB_USER:-gameuser}
+      DB_PASSWORD: ${DB_PASSWORD:-secure_game_password}
+      
+      # Configurazione API server
+      API_PORT: ${PUBLIC_API_PORT:-3000}
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_key_here}
+      NODE_ENV: ${NODE_ENV:-production}
+    ports:
+      - "${PUBLIC_API_PORT:-3000}:${PUBLIC_API_PORT:-3000}"
+    networks:
+      - game_network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    volumes:
+      - api_logs_public:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PUBLIC_API_PORT:-3000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Server Interno (solo per game_server)
+  private_api_server:
+    build:
+      context: ./api_private
+      dockerfile: Dockerfile
+    container_name: game_api_server_private
+    restart: unless-stopped
+    environment:
+      # Configurazione database
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-gamedb}
+      DB_USER: ${DB_USER:-gameuser}
+      DB_PASSWORD: ${DB_PASSWORD:-secure_game_password}
+      
+      # Configurazione API server
+      API_PORT: ${PRIVATE_API_PORT:-3001}
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_key_here}
+      NODE_ENV: ${NODE_ENV:-production}
+    # NESSUNA PORTA ESPOSTA - solo rete interna
+    networks:
+      - game_network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    volumes:
+      - api_logs_private:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${PRIVATE_API_PORT:-3001}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # phpMyAdmin per gestione database (opzionale)
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: game_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mariadb
+      PMA_PORT: 3306
+      PMA_USER: ${DB_USER:-gameuser}
+      PMA_PASSWORD: ${DB_PASSWORD:-secure_game_password}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-secure_root_password}
+    ports:
+      - "8080:80"
+    networks:
+      - game_network
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  # Server dedicato Godot
+  game_server:
+    build:
+      context: ./game_server
+      dockerfile: Dockerfile.gameserver
+    container_name: godot_game_server
+    restart: unless-stopped
+    environment:
+      # Configurazione API server (invece del database diretto)
+      API_SERVER_URL: http://game_api_server_private:${PRIVATE_API_PORT:-3000}
+      API_SECRET: ${JWT_SECRET:-your_jwt_secret_key_here}
+      
+      # Configurazione server di gioco
+      SERVER_PORT: ${SERVER_PORT:-7000}
+      MAX_PLAYERS: ${MAX_PLAYERS:-32}
+      SERVER_NAME: ${SERVER_NAME:-My Godot Game Server}
+    ports:
+      # Porta del server di gioco esposta all'esterno
+      - "${SERVER_PORT:-7000}:${SERVER_PORT:-7000}/udp"
+    networks:
+      - game_network
+    depends_on:
+      private_api_server:
+        condition: service_healthy
+    volumes:
+      - game_logs:/app/logs
+      - "game_data:/home/gameserver/.local/share/godot/app_userdata/Ice Skating"
+
+networks:
+  game_network:
+    driver: bridge
+    internal: false
+
+volumes:
+  mariadb_data:
+    driver: local
+  game_logs:
+    driver: local
+  game_data:
+    driver: local
+  api_logs_public:
+    driver: local
+  api_logs_private:
+    driver: local

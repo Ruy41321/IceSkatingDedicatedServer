@@ -1,0 +1,50 @@
+# Dockerfile per il server dedicato Godot
+FROM ubuntu:22.04
+
+# Aggiorna package list (layer separato per cache)
+RUN apt-get update
+
+# Installa dipendenze essenziali (layer separato)
+RUN apt-get install -y ca-certificates
+
+# Installa tool di rete per debug (opzionale - layer separato)
+RUN apt-get install -y netcat-traditional
+
+# Pulizia cache APT
+RUN rm -rf /var/lib/apt/lists/*
+
+# Crea utente non-root per sicurezza (layer separato)
+RUN useradd -m -s /bin/bash gameserver
+
+# Directory di lavoro
+WORKDIR /app
+
+# Crea directory per logs e dati (prima di copiare i file)
+RUN mkdir -p /app/logs /app/data
+
+# Copia cartella build (cambierà spesso - layer separato)
+COPY build /app/build
+
+# Copia script di avvio (cambierà spesso - layer separato)
+COPY start_server.sh /app/start_server.sh
+
+# Imposta permessi per eseguibili (layer separato)
+RUN find /app/build -name "*.x86_64" -exec chmod +x {} \; && \
+    find /app/build -name "*.exe" -exec chmod +x {} \; && \
+    chmod +x /app/start_server.sh
+
+# Cambia ownership a gameserver (layer separato)
+RUN chown -R gameserver:gameserver /app
+
+# Cambia all'utente non-root
+USER gameserver
+
+# Crea directory Godot per l'utente (layer separato)
+RUN mkdir -p "/home/gameserver/.local/share/godot/app_userdata/Ice Skating" && \
+    chmod -R 755 /home/gameserver/.local
+
+# Porta del server (configurabile tramite environment)
+EXPOSE 7000
+
+# Comando di avvio
+CMD ["/app/start_server.sh"]
