@@ -227,8 +227,22 @@ app.post('/api/auth/login', async (req, res) => {
 
     const user = users[0];
 
-    // Verifica password
-    const isValidPassword = await bcrypt.compare(password, user.psw_md5);
+    // Verifica password con gestione degli errori robusta
+    let isValidPassword = false;
+    try {
+      // Verifica che user.psw_md5 sia una stringa valida
+      if (!user.psw_md5 || typeof user.psw_md5 !== 'string') {
+        logger.error(`Hash password non valido per l'utente: ${username}`);
+        return res.status(500).json({ error: 'Errore interno del server' });
+      }
+      
+      isValidPassword = await bcrypt.compare(password, user.psw_md5);
+    } catch (bcryptError) {
+      // Log dettagliato dell'errore ma risposta generica al client
+      logger.error(`Errore durante la verifica password per ${username}:`, bcryptError);
+      return res.status(500).json({ error: 'Errore interno durante la verifica delle credenziali' });
+    }
+    
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Credenziali non valide' });
     }

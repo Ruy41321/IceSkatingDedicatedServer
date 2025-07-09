@@ -3,6 +3,14 @@
 # Script di avvio per il server Godot
 echo "Starting Godot Game Server..."
 
+# Crea directory per i log se non esiste
+mkdir -p /app/logs
+
+# Crea nome file di log con data corrente
+LOG_DATE=$(date +"%Y-%m-%d")
+LOG_FILE="/app/logs/server_${LOG_DATE}.log"
+echo "Logs will be saved to: $LOG_FILE"
+
 # Avvia il server Godot senza Xvfb se possibile
 echo "Starting Godot server on port $SERVER_PORT..."
 cd /app/build
@@ -13,7 +21,7 @@ stdbuf -oL -eL ./game_server.x86_64 \
     --server \
     --port=$SERVER_PORT \
     --max-players=$MAX_PLAYERS \
-    >> /app/logs/server.log 2>&1 &
+    >> $LOG_FILE 2>&1 &
 
 SERVER_PID=$!
 
@@ -41,7 +49,7 @@ if ! kill -0 $SERVER_PID 2>/dev/null; then
 		--server \
 		--port=$SERVER_PORT \
 		--max-players=$MAX_PLAYERS \
-		>> /app/logs/server.log 2>&1 &
+		>> $LOG_FILE 2>&1 &
     
     SERVER_PID=$!
     
@@ -49,7 +57,7 @@ if ! kill -0 $SERVER_PID 2>/dev/null; then
     sleep 3
     if ! kill -0 $SERVER_PID 2>/dev/null; then
         echo "ERROR: Failed to start Godot server"
-        cat /app/logs/server.log
+        cat $LOG_FILE
         exit 1
     fi
 else
@@ -59,7 +67,23 @@ fi
 
 echo "Godot server is running with PID: $SERVER_PID"
 
+# Funzione di cleanup
+cleanup() {
+    echo "$(date): Server shutting down, cleaning up..." >> $LOG_FILE
+    
+    # Uccidi Xvfb se in esecuzione
+    if [ -n "$XVFB_PID" ] && kill -0 $XVFB_PID 2>/dev/null; then
+        kill -15 $XVFB_PID
+    fi
+    
+    echo "$(date): Cleanup completed" >> $LOG_FILE
+}
+
+# Imposta trap per gestire la terminazione
+trap cleanup SIGINT SIGTERM
+
 # Attendi che il processo termini
+echo "$(date): Server running with PID: $SERVER_PID. Waiting for termination..." >> $LOG_FILE
 wait $SERVER_PID
 
 # Cleanup
