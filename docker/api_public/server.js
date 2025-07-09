@@ -187,8 +187,6 @@ app.post('/api/auth/register', async (req, res) => {
 
     logger.info(`Nuovo utente registrato e loggato: ${username}`);
     res.status(201).json({ 
-      message: 'Utente registrato con successo',
-      userId: userId,
       token: token,
       user: {
         id: userId,
