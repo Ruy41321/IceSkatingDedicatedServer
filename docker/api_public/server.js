@@ -104,6 +104,19 @@ const mapCompletionSchema = Joi.object({
 });
 
 // =======================
+// UTILITY FUNCTIONS
+// =======================
+
+// Genera JWT token con durata configurabile
+function generateAuthToken(userId, username) {
+  return jwt.sign(
+    { userId: userId, username: username },
+    process.env.JWT_SECRET || 'your_jwt_secret_key_here',
+    { expiresIn: '7d' } // Durata centralizzata del token
+  );
+}
+
+// =======================
 // ENDPOINTS
 // =======================
 
@@ -123,15 +136,26 @@ app.get('/api/auth/verify', authenticateToken, async (req, res) => {
     }
 
     const user = users[0];
+
+    // Trova la posizione nella leaderboard dell'utente usando RANK() per gestire i pari merito
+    const [rank] = await pool.execute(
+      `SELECT position, username FROM leaderboard 
+      WHERE username = ?`,
+      [user.username]
+    );
+
+    // Converte il rank in intero, o null se non trovato
+    const userRank = rank.length > 0 ? rank[0].position : null;
     
-    logger.info(`Token verificato per utente: ${user.username}`);
+    logger.info(`Token verificato per utente: ${user.username}, rank: ${userRank}`);
     res.json({
       valid: true,
       user: {
         id: user.id,
         username: user.username,
         bestScore: user.best_score,
-        mapsCompleted: user.map_completed
+        mapsCompleted: user.map_completed,
+        rank: userRank
       }
     });
 
@@ -179,11 +203,7 @@ app.post('/api/auth/register', async (req, res) => {
     const userId = result.insertId;
 
     // Genera JWT token per login automatico
-    const token = jwt.sign(
-      { userId: userId, username: username },
-      process.env.JWT_SECRET || 'your_jwt_secret_key_here',
-      { expiresIn: '24h' }
-    );
+    const token = generateAuthToken(userId, username);
 
     logger.info(`Nuovo utente registrato e loggato: ${username}`);
     res.status(201).json({ 
@@ -256,11 +276,7 @@ app.post('/api/auth/login', async (req, res) => {
     const userRank = rank.length > 0 ? rank[0].position : null;
 
     // Genera JWT token
-    const token = jwt.sign(
-      { userId: user.id, username: user.username },
-      process.env.JWT_SECRET || 'your_jwt_secret_key_here',
-      { expiresIn: '24h' }
-    );
+    const token = generateAuthToken(user.id, user.username);
 
     logger.info(`Login effettuato: ${username}, rank: ${userRank}`);
     res.json({
