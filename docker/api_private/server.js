@@ -158,89 +158,6 @@ app.get('/health', (req, res) => {
 });
 
 
-// Aggiorna punteggio migliore
-// app.post('/api/user/score', authenticateToken, async (req, res) => {
-//   try {
-//     const { error, value } = scoreUpdateSchema.validate(req.body);
-//     if (error) {
-//       return res.status(400).json({ error: error.details[0].message });
-//     }
-
-//     const { score } = value;
-//     const userId = req.user.userId;
-
-//     // Aggiorna solo se il nuovo punteggio è migliore
-//     await pool.execute(
-//       'UPDATE users SET best_score = GREATEST(best_score, ?) WHERE id = ?',
-//       [score, userId]
-//     );
-
-//     // Ottieni il punteggio aggiornato
-//     const [users] = await pool.execute(
-//       'SELECT best_score FROM users WHERE id = ?',
-//       [userId]
-//     );
-
-//     logger.info(`Punteggio aggiornato per utente ${req.user.username}: ${score}`);
-//     res.json({ 
-//       message: 'Punteggio aggiornato',
-//       bestScore: users[0].best_score 
-//     });
-
-//   } catch (error) {
-//     logger.error('Errore aggiornamento punteggio:', error);
-//     res.status(500).json({ error: 'Errore interno del server' });
-//   }
-// });
-
-
-
-
-
-
-// Ottieni informazioni utente
-// app.get('/api/user/profile', authenticateToken, async (req, res) => {
-//   try {
-//     const userId = req.user.userId;
-
-//     const [users] = await pool.execute(
-//       'SELECT username, best_score, map_completed FROM users WHERE id = ?',
-//       [userId]
-//     );
-
-//     if (users.length === 0) {
-//       return res.status(404).json({ error: 'Utente non trovato' });
-//     }
-
-//     const user = users[0];
-//     res.json({
-//       username: user.username,
-//       bestScore: user.best_score,
-//       mapsCompleted: user.map_completed
-//     });
-
-//   } catch (error) {
-//     logger.error('Errore profilo utente:', error);
-//     res.status(500).json({ error: 'Errore interno del server' });
-//   }
-// });
-
-// // Ottieni lista mappe
-// app.get('/api/maps', async (req, res) => {
-//   try {
-//     const [maps] = await pool.execute(
-//       'SELECT id, map_name, difficulty, completed_times, played_times FROM maps ORDER BY difficulty, map_name'
-//     );
-
-//     res.json({ maps });
-
-//   } catch (error) {
-//     logger.error('Errore lista mappe:', error);
-//     res.status(500).json({ error: 'Errore interno del server' });
-//   }
-// });
-
-
 // Ottieni la prima mappa di difficolta x non giocata da i 2 utenti specificati
 
 app.get('/api/maps/first-uncompleted', async (req, res) => {
@@ -294,7 +211,7 @@ app.post('/api/maps/user-completed', async (req, res) => {
     const { error, value } = Joi.object({
       user_id: Joi.number().integer().positive().required(),
       map_id: Joi.number().integer().positive().required(),
-      completation_strike: Joi.number().integer().positive().required()
+      completation_strike: Joi.number().integer().min(0).required()
     }).validate(req.body);
 
     if (error) {
@@ -390,6 +307,101 @@ app.post('/api/maps/user-completed', async (req, res) => {
 
   } catch (error) {
     logger.error('Errore registrazione completamento mappa:', error);
+    res.status(500).json({ error: 'Errore interno del server' });
+  }
+});
+
+// Registra il completamento di una mappa in modalità ranked
+app.post('/api/ranked/user-completed', async (req, res) => {
+  try {
+    const { error, value } = Joi.object({
+      user_id: Joi.number().integer().positive().required(),
+      map_id: Joi.number().integer().positive().required(),
+      completation_strike: Joi.number().integer().min(0).required()
+    }).validate(req.body);
+
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const { user_id, map_id, completation_strike } = value;
+
+    // Inizia una transazione per garantire consistenza
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      // Verifica che l'utente esista
+      const [users] = await connection.execute(
+        'SELECT id, username, map_completed, best_score FROM users WHERE id = ?',
+        [user_id]
+      );
+
+      if (users.length === 0) {
+        await connection.rollback();
+        connection.release();
+        return res.status(404).json({ error: 'Utente non trovato' });
+      }
+
+      // Verifica che la mappa esista
+      const [maps] = await connection.execute(
+        'SELECT id, map_name FROM maps WHERE id = ?',
+        [map_id]
+      );
+
+      if (maps.length === 0) {
+        await connection.rollback();
+        connection.release();
+        return res.status(404).json({ error: 'Mappa non trovata' });
+      }
+
+      // Verifica se l'utente ha già completato questa mappa (per evitare duplicati nel tracking)
+      const [existingCompletions] = await connection.execute(
+        'SELECT id FROM user_completed_maps WHERE user_id = ? AND map_id = ?',
+        [user_id, map_id]
+      );
+
+      // Inserisci il completamento nella tabella user_completed_maps solo se non esiste già
+      if (existingCompletions.length === 0) {
+        await connection.execute(
+          'INSERT INTO user_completed_maps (user_id, map_id) VALUES (?, ?)',
+          [user_id, map_id]
+        );
+      }
+
+      // NOTA: In modalità ranked NON incrementiamo map_completed dell'utente
+      // Aggiorniamo solo il best_score se il punteggio è migliore
+      if (completation_strike > users[0].best_score) {
+        await connection.execute(
+          'UPDATE users SET best_score = ? WHERE id = ?',
+          [completation_strike, user_id]
+        );
+      }
+
+      // Commit della transazione
+      await connection.commit();
+      connection.release();
+
+      logger.info(`Completamento ranked registrato: User ${users[0].username} (ID: ${user_id}), Map ${maps[0].map_name} (ID: ${map_id}), Score: ${completation_strike}`);
+      
+      res.status(201).json({
+        message: 'Completamento ranked registrato con successo',
+        userId: user_id,
+        mapId: map_id,
+        userName: users[0].username,
+        mapName: maps[0].map_name,
+        currentScore: completation_strike,
+        bestScore: Math.max(users[0].best_score, completation_strike)
+      });
+
+    } catch (transactionError) {
+      await connection.rollback();
+      connection.release();
+      throw transactionError;
+    }
+
+  } catch (error) {
+    logger.error('Errore registrazione completamento ranked:', error);
     res.status(500).json({ error: 'Errore interno del server' });
   }
 });
@@ -495,6 +507,44 @@ app.post('/api/maps/update-stats', async (req, res) => {
 
   } catch (error) {
     logger.error('Errore aggiornamento statistiche mappa:', error);
+    res.status(500).json({ error: 'Errore interno del server' });
+  }
+});
+
+// Ottieni il valore massimo di maps_completed tra gli utenti specificati
+app.post('/api/users/max-maps-completed', async (req, res) => {
+  try {
+    const { error, value } = Joi.object({
+      user_ids: Joi.array().items(Joi.number().integer().positive()).min(1).required()
+    }).validate(req.body);
+
+    if (error) {
+      return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const { user_ids } = value;
+
+    // Costruisci i placeholder per la query (?, ?, ?, ...)
+    const placeholders = user_ids.map(() => '?').join(', ');
+    
+    // Query per ottenere il valore massimo di maps_completed
+    const [results] = await pool.execute(
+      `SELECT MAX(map_completed) as max_maps_completed FROM users WHERE id IN (${placeholders})`,
+      user_ids
+    );
+
+    const maxMapsCompleted = results.length > 0 ? (results[0].max_maps_completed || 0) : 0;
+
+    logger.info(`Max maps completed retrieved for users [${user_ids.join(', ')}]: ${maxMapsCompleted}`);
+    
+    res.json({
+      max_maps_completed: maxMapsCompleted,
+      user_ids: user_ids,
+      count: user_ids.length
+    });
+
+  } catch (error) {
+    logger.error('Errore recupero max maps completed:', error);
     res.status(500).json({ error: 'Errore interno del server' });
   }
 });

@@ -315,6 +315,32 @@ app.get('/api/leaderboard', async (req, res) => {
   }
 });
 
+// Ottieni leaderboard dei livelli completati
+app.get('/api/leaderboard/levels', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+    const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+
+    const [leaderboard] = await pool.execute(
+      `SELECT 
+        ROW_NUMBER() OVER (ORDER BY map_completed DESC, username ASC) as position,
+        username, 
+        map_completed 
+      FROM users 
+      WHERE map_completed > 0 
+      ORDER BY map_completed DESC, username ASC 
+      LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    res.json({ leaderboard });
+
+  } catch (error) {
+    logger.error('Errore leaderboard livelli:', error);
+    res.status(500).json({ error: 'Errore interno del server' });
+  }
+});
+
 // Error handler
 app.use((error, req, res, next) => {
   logger.error('Errore non gestito:', error);
