@@ -303,7 +303,7 @@ app.get('/api/leaderboard', async (req, res) => {
     const offset = Math.max(parseInt(req.query.offset) || 0, 0);
 
     const [leaderboard] = await pool.execute(
-      'SELECT position, username, best_score FROM leaderboard ORDER BY best_score DESC LIMIT ? OFFSET ?',
+      'SELECT position, username, best_score FROM leaderboard WHERE best_score > 0 ORDER BY best_score DESC LIMIT ? OFFSET ?',
       [limit, offset]
     );
 
