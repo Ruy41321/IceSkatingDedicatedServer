@@ -5,7 +5,7 @@ This directory contains the complete Docker environment for running the Ice Skat
 ## 📋 Prerequisites
 
 - Docker and Docker Compose installed
-- **Important**: A compatible dedicated server build of the game exported to `game_server/build/`
+- **Important**: A compatible dedicated server build of the game exported to `docker/game_server/build/`
 
 ## 🏗️ Architecture Overview
 
@@ -49,8 +49,6 @@ cp .env.example .env  # If available
 ```
 
 ### 3. Start the Environment
-
-If the game_server encounters an error relative the start_server.sh file you have to change the EOF of the file
 
 ```bash
 # Start all services
@@ -119,7 +117,9 @@ For production deployment:
 ## 🔍 Troubleshooting
 
 ### Game Server Won't Start
-- Verify the dedicated server build exists in `game_server/build/`
+
+- If you encounter an error relative the start_server.sh file you probably have to change the EOF of the file
+- Verify the dedicated server build exists in `docker/game_server/build/`
 - Check the executable has proper permissions
 - Review game server logs: `docker-compose logs game_server`
 
