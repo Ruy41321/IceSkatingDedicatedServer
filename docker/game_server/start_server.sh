@@ -12,7 +12,7 @@ LOG_FILE="/app/logs/server_${LOG_DATE}.log"
 echo "Logs will be saved to: $LOG_FILE"
 
 # Avvia il server Godot senza Xvfb se possibile
-echo "Starting Godot server on port $SERVER_PORT..."
+echo "Starting Godot server on ports ENet:$SERVER_PORT, WebSocket:$WEBSOCKET_PORT..."
 cd /app/build
 
 # Prova prima senza display (completamente headless)
@@ -20,6 +20,7 @@ echo "Attempting to start in headless mode..."
 stdbuf -oL -eL ./game_server.x86_64 \
     --server \
     --port=$SERVER_PORT \
+    --websocket-port=$WEBSOCKET_PORT \
     --max-players=$MAX_PLAYERS \
     >> $LOG_FILE 2>&1 &
 
@@ -48,6 +49,7 @@ if ! kill -0 $SERVER_PID 2>/dev/null; then
     stdbuf -oL -eL ./game_server.x86_64 \
 		--server \
 		--port=$SERVER_PORT \
+		--websocket-port=$WEBSOCKET_PORT \
 		--max-players=$MAX_PLAYERS \
 		>> $LOG_FILE 2>&1 &
     
