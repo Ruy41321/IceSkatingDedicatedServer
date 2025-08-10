@@ -123,13 +123,9 @@ services:
       API_SECRET: ${JWT_SECRET:-your_jwt_secret_key_here}
       
       # Configurazione server di gioco
-      SERVER_PORT: ${SERVER_PORT:-7000}
-      WEBSOCKET_PORT: ${WEBSOCKET_PORT:-7001}
       MAX_PLAYERS: ${MAX_PLAYERS:-32}
       SERVER_NAME: ${SERVER_NAME:-My Godot Game Server}
     ports:
-      # Porta ENet del server di gioco esposta all'esterno (UDP)
-      - "${SERVER_PORT:-7000}:${SERVER_PORT:-7000}/udp"
       # Porta WebSocket del server di gioco esposta all'esterno (TCP)
       - "${WEBSOCKET_PORT:-7001}:${WEBSOCKET_PORT:-7001}/tcp"
     networks:

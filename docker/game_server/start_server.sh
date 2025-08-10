@@ -19,7 +19,6 @@ cd /app/build
 echo "Attempting to start in headless mode..."
 stdbuf -oL -eL ./game_server.x86_64 \
     --server \
-    --port=$SERVER_PORT \
     --websocket-port=$WEBSOCKET_PORT \
     --max-players=$MAX_PLAYERS \
     >> $LOG_FILE 2>&1 &
@@ -48,7 +47,6 @@ if ! kill -0 $SERVER_PID 2>/dev/null; then
     # Riprova con il display virtuale
     stdbuf -oL -eL ./game_server.x86_64 \
 		--server \
-		--port=$SERVER_PORT \
 		--websocket-port=$WEBSOCKET_PORT \
 		--max-players=$MAX_PLAYERS \
 		>> $LOG_FILE 2>&1 &
